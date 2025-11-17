@@ -168,7 +168,7 @@ class Orchestrator:
                 
                 tasks.append(TaskPlan(
                     task_name="BV Implementation Timeline",
-                    search_query="Netherlands BV setup timeline notarization KvK registration bank account duration 2025",
+                    search_query="Netherlands BV setup timeline notary deed incorporation share capital KvK registration bank account duration 2025",
                     section_name="implementation_timeline",
                     priority=4
                 ))
@@ -198,8 +198,8 @@ class Orchestrator:
                 ))
                 
                 tasks.append(TaskPlan(
-                    task_name="Branch Implementation Timeline",
-                    search_query="Netherlands Branch Office setup timeline KvK registration no notary fast entry 2025",
+                    task_name="Branch Office Timeline",
+                    search_query="Netherlands Branch Office registration process KvK timeline steps no notary required fast setup 2025",
                     section_name="implementation_timeline",
                     priority=4
                 ))
@@ -229,7 +229,7 @@ class Orchestrator:
                 
                 tasks.append(TaskPlan(
                     task_name="Implementation Timeline Research",
-                    search_query="Netherlands company registration timeline BV branch office setup duration 2025",
+                    search_query="Netherlands BV vs Branch Office setup timeline comparison notary requirements KvK registration duration 2025",
                     section_name="implementation_timeline",
                     priority=4
                 ))

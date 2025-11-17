@@ -185,11 +185,32 @@ class RAGEngine:
             # Build task-specific constraints
             task_constraints = self._build_task_constraints(task_name, section_name, search_query)
             
+            # Add timeline-specific critical logic
+            timeline_logic = ""
+            if section_name == "implementation_timeline":
+                timeline_logic = """
+CRITICAL LOGIC FOR TIMELINE:
+- Check the task name and search query to determine the recommended structure.
+- IF the task mentions "Branch Office" or "Branch" in the task name/search query:
+  - Phase 1 MUST be "Registration at Chamber of Commerce (KvK)".
+  - You MUST NOT mention "Notary", "Deed of Incorporation", "Deed", or "Share Capital".
+  - These do not exist for Branch Offices.
+  - Mention that Bank Account opening is still slow (2-4 months) even for a Branch.
+- IF the task mentions "BV" or "Besloten Vennootschap" in the task name/search query:
+  - Phase 1 MUST be "Civil Law Notary & Deed of Incorporation".
+  - Phase 2 MUST be "Share Capital Deposit & Registration".
+  - Emphasize that Bank Account opening (4+ weeks) is the main bottleneck.
+- The timeline phases MUST match the recommended structure. Do not mix Branch and BV processes.
+
+"""
+            
             prompt = f"""{MASTER_SYSTEM_PROMPT}
 
 TASK: Generate the "{section_name}" section of a Market Entry Memo for the Netherlands.
 
 {task_constraints}
+
+{timeline_logic}
 
 CONTEXT FROM KNOWLEDGE BASE:
 {full_context}
