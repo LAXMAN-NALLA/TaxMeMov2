@@ -188,19 +188,56 @@ class RAGEngine:
             # Add timeline-specific critical logic
             timeline_logic = ""
             if section_name == "implementation_timeline":
-                timeline_logic = """
+                # Determine entity type from task name
+                is_branch = task_name and ("Branch" in task_name or "branch" in task_name.lower())
+                is_bv = task_name and ("BV" in task_name or "Besloten" in task_name)
+                
+                if is_branch:
+                    timeline_logic = f"""
+🚨 CRITICAL: This timeline is for a BRANCH OFFICE (Task: {task_name})
+YOU MUST FOLLOW THESE RULES STRICTLY:
+
+1. Phase 1 MUST be: "Registration at Chamber of Commerce (KvK)" or "KvK Registration"
+2. FORBIDDEN - DO NOT MENTION:
+   - "Notary" or "Civil Law Notary"
+   - "Deed of Incorporation" or "Deed"
+   - "Share Capital" or "Capital Deposit"
+   - These processes DO NOT EXIST for Branch Offices
+
+3. Branch Office Process:
+   - Phase 1: KvK Registration (fast, no notary needed)
+   - Phase 2: Bank Account Opening (still slow: 2-4 months)
+   - Phase 3: Tax Registration (VAT number)
+
+4. The timeline MUST reflect Branch Office simplicity - no notary, no share capital.
+
+IF THE CONTEXT MENTIONS "NOTARY" OR "DEED", IGNORE IT - IT DOES NOT APPLY TO BRANCH OFFICES.
+
+"""
+                elif is_bv:
+                    timeline_logic = f"""
+🚨 CRITICAL: This timeline is for a BV (Task: {task_name})
+YOU MUST FOLLOW THESE RULES:
+
+1. Phase 1 MUST be: "Civil Law Notary & Deed of Incorporation"
+2. Phase 2 MUST be: "Share Capital Deposit & Registration"
+3. Phase 3: Bank Account Opening (4+ weeks, main bottleneck)
+4. Phase 4: Tax Registration
+
+The BV process REQUIRES a notary and share capital deposit.
+
+"""
+                else:
+                    timeline_logic = """
 CRITICAL LOGIC FOR TIMELINE:
 - Check the task name and search query to determine the recommended structure.
-- IF the task mentions "Branch Office" or "Branch" in the task name/search query:
+- IF the task mentions "Branch Office" or "Branch":
   - Phase 1 MUST be "Registration at Chamber of Commerce (KvK)".
-  - You MUST NOT mention "Notary", "Deed of Incorporation", "Deed", or "Share Capital".
-  - These do not exist for Branch Offices.
-  - Mention that Bank Account opening is still slow (2-4 months) even for a Branch.
-- IF the task mentions "BV" or "Besloten Vennootschap" in the task name/search query:
+  - DO NOT mention "Notary", "Deed of Incorporation", or "Share Capital".
+- IF the task mentions "BV" or "Besloten Vennootschap":
   - Phase 1 MUST be "Civil Law Notary & Deed of Incorporation".
   - Phase 2 MUST be "Share Capital Deposit & Registration".
-  - Emphasize that Bank Account opening (4+ weeks) is the main bottleneck.
-- The timeline phases MUST match the recommended structure. Do not mix Branch and BV processes.
+- The timeline phases MUST match the recommended structure exactly.
 
 """
             
