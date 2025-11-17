@@ -97,52 +97,23 @@ class QdrantService:
             # Qdrant search requires a query vector, not text
             query_vector = self._text_to_embedding(query)
             
-            # Perform vector search - try query_points first (newer API), fallback to search if needed
+            # Perform vector search using search method (standard API for qdrant-client 1.10+)
             # No metadata filters for V1 - search all documents
-            try:
-                # Try query_points (newer API for qdrant-client 1.10+)
-                from qdrant_client.models import Query, Vector
-                search_results = self.client.query_points(
-                    collection_name=self.collection_name,
-                    query=Query(vector=query_vector),
-                    limit=limit
-                )
-            except (AttributeError, TypeError):
-                # Fallback: try search_points (older API)
-                try:
-                    search_results = self.client.search_points(
-                        collection_name=self.collection_name,
-                        query_vector=query_vector,
-                        limit=limit
-                    )
-                except AttributeError:
-                    # Last resort: try query with NamedVector
-                    from qdrant_client.models import NamedVector
-                    search_results = self.client.query_points(
-                        collection_name=self.collection_name,
-                        query=NamedVector(vector=query_vector),
-                        limit=limit
-                    )
+            search_results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=limit
+            )
             
             # Format results
-            # query_points returns QueryResponse with points, search_points returns list of ScoredPoint
+            # search_points returns list of ScoredPoint objects
             results = []
-            if hasattr(search_results, 'points'):
-                # query_points returns QueryResponse
-                for point in search_results.points:
-                    results.append({
-                        "score": getattr(point, 'score', 0.0),
-                        "payload": getattr(point, 'payload', {}),
-                        "id": getattr(point, 'id', None)
-                    })
-            else:
-                # search_points returns list of ScoredPoint
-                for result in search_results:
-                    results.append({
-                        "score": result.score,
-                        "payload": result.payload,
-                        "id": result.id
-                    })
+            for result in search_results:
+                results.append({
+                    "score": result.score,
+                    "payload": result.payload,
+                    "id": result.id
+                })
             
             logger.info(f"Qdrant search successful: {len(results)} results for query: {query[:50]}...")
             return results
