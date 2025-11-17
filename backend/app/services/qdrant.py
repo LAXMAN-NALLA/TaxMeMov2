@@ -97,23 +97,34 @@ class QdrantService:
             # Qdrant search requires a query vector, not text
             query_vector = self._text_to_embedding(query)
             
-            # Perform vector search using search method (standard API for qdrant-client 1.10+)
+            # Perform vector search using query_points (correct API for qdrant-client 1.10+)
             # No metadata filters for V1 - search all documents
-            search_results = self.client.search(
+            # query_points accepts vector directly as a list
+            search_results = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,  # Pass vector directly as list
                 limit=limit
             )
             
             # Format results
-            # search_points returns list of ScoredPoint objects
+            # query_points returns QueryResponse with points attribute
             results = []
-            for result in search_results:
-                results.append({
-                    "score": result.score,
-                    "payload": result.payload,
-                    "id": result.id
-                })
+            if hasattr(search_results, 'points'):
+                # QueryResponse format
+                for point in search_results.points:
+                    results.append({
+                        "score": getattr(point, 'score', 0.0) if hasattr(point, 'score') else 0.0,
+                        "payload": getattr(point, 'payload', {}) if hasattr(point, 'payload') else {},
+                        "id": getattr(point, 'id', None) if hasattr(point, 'id') else None
+                    })
+            else:
+                # Fallback: try iterating directly
+                for result in search_results:
+                    results.append({
+                        "score": result.score,
+                        "payload": result.payload,
+                        "id": result.id
+                    })
             
             logger.info(f"Qdrant search successful: {len(results)} results for query: {query[:50]}...")
             return results
