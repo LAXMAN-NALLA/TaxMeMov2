@@ -1,6 +1,7 @@
 """Orchestrator that plans research tasks based on input."""
 from typing import List, Dict, Any, Optional
 from app.models.request import TaxMemoRequest
+from app.core.semantic_router import SemanticRouter
 
 
 class TaskPlan:
@@ -26,8 +27,10 @@ class Orchestrator:
     Master Orchestrator that enforces strict logic paths to prevent 
     hallucinations and context conflicts.
     
+    V2 Upgrade: Uses Semantic Router (AI-powered intent classification) instead of regex/if-else.
+    
     Key Features:
-    - Prevents "B.V." name trap: Forces BV if name contains "B.V."
+    - Prevents "B.V." name trap: Forces BV if name contains "B.V." (or synonyms like "Dutch Limited Liability Co")
     - Prevents "Holding" conflict: Strict isolation for holding companies
     - Prevents "Notary" hallucination: Explicit "no notary" in Branch queries
     - Prevents "Ghost" tax credits: Only searches Innovation Box/WBSO for Tech
@@ -38,10 +41,13 @@ class Orchestrator:
     
     def __init__(self):
         self.jurisdiction = self.DEFAULT_JURISDICTION
+        self.semantic_router = SemanticRouter()  # V2: AI-powered intent classification
     
     def plan_tasks(self, request: TaxMemoRequest) -> List[TaskPlan]:
         """
         Generate a list of research tasks based on the input.
+        
+        V2: Uses Semantic Router (AI) instead of regex/if-else for intent classification.
         
         Uses strict mutually exclusive paths to prevent context bleed-over:
         - PATH 1: Holding Company (strict isolation, no R&D/Branch)
@@ -52,79 +58,37 @@ class Orchestrator:
         """
         tasks: List[TaskPlan] = []
         
-        # 1. ANALYZE & CLASSIFY THE INPUT
+        # 1. ANALYZE & CLASSIFY THE INPUT (V2: Using Semantic Router)
         # ---------------------------------------------------------
-        company_name = (request.company_name or "").lower()
-        industry = (request.industry or "").lower()
-        company_type = (request.company_type or "").lower()
+        # Convert request to dict for semantic router
+        request_dict = request.model_dump()
+        
+        # V2: Use AI-powered semantic router instead of regex
+        intent = self.semantic_router.get_intent(request_dict)
+        
+        # Extract classified values
+        is_holding = intent.is_holding
+        must_be_bv = intent.must_be_bv
+        urgency = intent.urgency
+        industry_context = intent.industry_context
+        
+        # Map industry_context to is_tech (for backward compatibility with task planning)
+        is_tech = (industry_context == "TECH")
+        
+        # Map urgency to prioritizes_speed
+        prioritizes_speed = (urgency == "HIGH")
+        
+        # Get goals for staffing detection (still needed for conditional tasks)
         goals = [g.lower() for g in (request.entry_goals or [])]
-        tax_considerations = [str(tc).lower() for tc in (request.tax_considerations or [])]
-        timeline = (request.timeline_preference or "").lower()
-        additional_context = (request.additional_context or "").lower()
-        
-        # Combine all tax-related text for detection
-        all_tax_text = " ".join(tax_considerations) + " " + additional_context
-        
-        # A. Detect Holding Company Intent
-        # Triggers: Explicit type, specific tax goals (participation exemption), or "holding" in name
-        # CRITICAL: Must be checked BEFORE must_be_bv to ensure proper isolation
-        is_holding = (
-            (company_type and "holding" in company_type) or 
-            (company_name and "holding" in company_name) or
-            "participation exemption" in all_tax_text or
-            "deelnemingsvrijstelling" in all_tax_text or
-            ("dividend" in all_tax_text and "holding" in all_tax_text)
-        )
-        
-        # B. Detect "Must be B.V." Constraint
-        # CRITICAL: Only force BV for EXPLICIT Dutch entity intent, not generic foreign terms
-        # Triggers: User explicitly named it "B.V." or explicitly selected Dutch entity type, or it is a Holding
-        must_be_bv = (
-            # Only force BV if they explicitly name the DUTCH entity "B.V."
-            "b.v" in company_name or 
-            "bv" in company_name or 
-            "b.v." in company_name or
-            company_name.endswith(".bv") or
-            company_name.endswith(".b.v") or
-            company_name.endswith(".b.v.") or
-            # Or if they explicitly ask for the specific Dutch entity type
-            "besloten vennootschap" in company_type or
-            # Or if it is a Holding (which usually needs BV for treaties)
-            is_holding  # Holding companies almost always require a BV structure for tax treaties
-        )
-        # NOTE: "LLC", "Corporation", "Limited Liability" are REMOVED
-        # These are foreign terms and don't necessarily mean the user wants a Dutch BV.
-        # If user wants speed, they should get Branch Office, not forced BV.
-        
-        # C. Detect Tech/R&D Intent
-        # Triggers: Software, Technology, BioTech, Engineering, etc.
-        # CRITICAL: Must NOT be Financial Services (to prevent ghost R&D credits)
-        is_tech = (
-            ("software" in industry or "technology" in industry) and
-            "financial services" not in industry
-        ) or (
-            "biotech" in industry or 
-            "engineering" in industry or
-            "r&d" in " ".join(goals) or
-            "research" in " ".join(goals)
-        )
-        
-        # D. Detect Speed Preference
-        prioritizes_speed = (
-            "short" in timeline or 
-            "fast" in timeline or 
-            "urgent" in timeline or
-            "asap" in timeline or
-            "1 month" in timeline
-        )
         
         # 2. BUILD THE TASK PLAN (MUTUALLY EXCLUSIVE PATHS)
         # ---------------------------------------------------------
         
-        # DEBUG: Log detection results (remove in production)
+        # DEBUG: Log detection results
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"Orchestrator Detection - is_holding: {is_holding}, must_be_bv: {must_be_bv}, is_tech: {is_tech}, prioritizes_speed: {prioritizes_speed}")
+        logger.info(f"V2 Semantic Router Classification - is_holding: {is_holding}, must_be_bv: {must_be_bv}, "
+                   f"entity_type: {intent.entity_type}, urgency: {urgency}, industry_context: {industry_context}")
         
         # --- PATH 1: THE HOLDING COMPANY (Strict Isolation) ---
         # CRITICAL: This path must RETURN EARLY to prevent any fall-through
