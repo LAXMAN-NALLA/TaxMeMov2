@@ -29,8 +29,8 @@ st.sidebar.markdown("---")
 # API Configuration
 API_URL = st.sidebar.text_input(
     "Backend API URL",
-    value="http://localhost:8000",
-    help="Enter your backend API URL"
+    value="https://taxmemov2.onrender.com",
+    help="Enter your backend API URL (default: production server)"
 )
 
 # Initialize session state
@@ -509,8 +509,9 @@ def generate_memo():
                     st.write(response.text)
         except requests.exceptions.ConnectionError:
             st.error(f"❌ Could not connect to API at {API_URL}")
-            st.info("💡 Make sure your backend server is running!")
-            st.code("cd backend\nuvicorn app.main:app --reload", language="bash")
+            st.info("💡 The backend server might be starting up. Please try again in a few moments.")
+            st.info(f"🔗 Backend URL: {API_URL}")
+            st.info("💡 If the issue persists, check the backend status at: https://taxmemov2.onrender.com/health")
         except requests.exceptions.Timeout:
             st.error("❌ Request timed out. The memo generation is taking longer than expected.")
         except Exception as e:

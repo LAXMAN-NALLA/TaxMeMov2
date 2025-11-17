@@ -20,6 +20,8 @@ from app.models.response import (
 )
 from app.core.orchestrator import Orchestrator
 from app.services.rag_engine import RAGEngine
+from app.services.qdrant import QdrantService
+from app.core.config import settings
 from typing import Dict, Any
 import logging
 
@@ -30,8 +32,8 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Tax Memo Orchestrator API",
-    description="Generate comprehensive market entry memos using RAG",
-    version="1.0.0"
+    description="Generate comprehensive market entry memos using RAG with V2 Semantic Router",
+    version="2.0.0"
 )
 
 # Add CORS middleware
@@ -46,6 +48,7 @@ app.add_middleware(
 # Initialize services
 orchestrator = Orchestrator()
 rag_engine = RAGEngine()
+qdrant_service = QdrantService()  # For diagnostics
 
 
 def map_sections_to_response(sections: Dict[str, Any], request: TaxMemoRequest) -> MemoResponse:
@@ -300,15 +303,75 @@ async def root():
     """Root endpoint."""
     return {
         "message": "Tax Memo Orchestrator API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "operational"
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Health check endpoint with Qdrant diagnostics."""
+    import os
+    
+    # Get raw environment variable (may be different from settings if not loaded)
+    env_qdrant_url = os.getenv("QDRANT_URL", "")
+    env_qdrant_api_key = os.getenv("QDRANT_API_KEY", "")
+    env_openai_key = os.getenv("OPENAI_API_KEY", "")
+    
+    health_status = {
+        "status": "healthy",
+        "version": "2.0.0",
+        "qdrant": {
+            "configured": bool(settings.qdrant_url),
+            "url_from_settings": settings.qdrant_url[:50] + "..." if len(settings.qdrant_url) > 50 else settings.qdrant_url if settings.qdrant_url else "NOT SET",
+            "url_from_env": env_qdrant_url[:50] + "..." if len(env_qdrant_url) > 50 else env_qdrant_url if env_qdrant_url else "NOT SET",
+            "api_key_set": bool(settings.qdrant_api_key),
+            "connected": False,
+            "status": "unknown",
+            "error": None,
+            "diagnostic": None
+        },
+        "openai": {
+            "configured": bool(env_openai_key)
+        }
+    }
+    
+    # Diagnostic: Check if environment variable is set
+    if not env_qdrant_url:
+        health_status["qdrant"]["status"] = "not_configured"
+        health_status["qdrant"]["error"] = "QDRANT_URL environment variable not set"
+        health_status["qdrant"]["diagnostic"] = "Go to Render Dashboard → Environment → Add QDRANT_URL"
+        health_status["status"] = "degraded"
+        return health_status
+    
+    # Test Qdrant connection
+    try:
+        if qdrant_service._ensure_client():
+            health_status["qdrant"]["connected"] = True
+            health_status["qdrant"]["status"] = "connected"
+        else:
+            health_status["qdrant"]["status"] = "connection_failed"
+            health_status["qdrant"]["error"] = "Connection test failed - check QDRANT_URL format"
+            health_status["qdrant"]["diagnostic"] = "Verify QDRANT_URL is correct (https://xxx.qdrant.io or http://server:6333)"
+            health_status["status"] = "degraded"
+    except Exception as e:
+        error_msg = str(e)
+        health_status["qdrant"]["status"] = "error"
+        health_status["qdrant"]["error"] = error_msg
+        
+        # Provide specific guidance based on error
+        if "Name or service not known" in error_msg or "[Errno -2]" in error_msg:
+            health_status["qdrant"]["diagnostic"] = "DNS resolution failed. Check QDRANT_URL format. Should be: https://xxx.qdrant.io (with https://)"
+        elif "Connection refused" in error_msg:
+            health_status["qdrant"]["diagnostic"] = "Connection refused. Check if Qdrant server is running and URL is correct."
+        elif "timeout" in error_msg.lower():
+            health_status["qdrant"]["diagnostic"] = "Connection timeout. Check network connectivity and Qdrant server status."
+        else:
+            health_status["qdrant"]["diagnostic"] = "Check QDRANT_URL and QDRANT_API_KEY in Render Dashboard → Environment"
+        
+        health_status["status"] = "degraded"  # Still works without Qdrant
+    
+    return health_status
 
 
 @app.post("/generate-memo", response_model=MemoResponse)
